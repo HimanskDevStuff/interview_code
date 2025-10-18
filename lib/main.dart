@@ -1,184 +1,51 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/http.dart' as context;
+import 'package:interview_code/data/remote/ApiService.dart';
+import 'package:interview_code/presentation/bloc/ProductBloc.dart';
+import 'package:interview_code/presentation/bloc/ProductEvents.dart';
+import 'package:interview_code/presentation/bloc/ProductState.dart';
+import 'package:interview_code/presentation/screens/ProductScreen.dart';
+
+import 'data/repository/ProductRepositoryImpl.dart';
+import 'domain/repository/ProductRepository.dart';
+import 'domain/usecase/ProductUseCase.dart';
 
 void main() {
+  setUpDependencies();
   runApp(MyApp());
 }
 
+void setUpDependencies() {
+  var getIt = GetIt.instance;
+  getIt.registerSingleton(ApiService());
+
+  getIt.registerSingleton<ProductRepository>(ProductRepositoryImpl(getIt()));
+
+  getIt.registerSingleton<ProductUseCase>(ProductUseCase(productRepository: getIt()));
+
+  getIt.registerSingleton<ProductBlock>(ProductBlock(productUseCase: getIt()));
+
+}
+
 class MyApp extends StatelessWidget {
+  var getIt = GetIt.instance;
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(title: 'Products List', home: ProductsScreen());
-  }
-}
 
-class ProductsScreen extends StatefulWidget {
-  @override
-  _ProductsScreenState createState() => _ProductsScreenState();
-}
-
-class _ProductsScreenState extends State<ProductsScreen> {
-  List<dynamic> products = [];
-  bool isLoading = false;
-  String searchText = '';
-  TextEditingController searchController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    fetchProducts();
-  }
-
-  fetchProducts() async {
-    setState(() {
-      isLoading = true;
-    });
-
-    try {
-      // Simulating API call - replace with actual endpoint
-      final response = await http.get(
-        Uri.parse('https://fakestoreapi.com/products'),
-      );
-      if (response.statusCode == 200) {
-        setState(() {
-          products = json.decode(response.body);
-          isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        isLoading = false;
-      });
-      print('Error: $e');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Products'), backgroundColor: Colors.blue),
-      body: Column(
-        children: [
-          Container(
-            padding: EdgeInsets.all(16),
-            child: TextField(
-              controller: searchController,
-              decoration: InputDecoration(
-                hintText: 'Search products...',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  searchText = value;
-                });
-              },
-            ),
-          ),
-          Expanded(
-            child: isLoading
-                ? Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    itemCount: products.length,
-                    itemBuilder: (context, index) {
-                      final product = products[index];
-
-                      // Filter products based on search
-                      if (searchText.isNotEmpty &&
-                          !product['title'].toString().toLowerCase().contains(
-                            searchText.toLowerCase(),
-                          )) {
-                        return Container();
-                      }
-
-                      return Container(
-                        margin: EdgeInsets.all(8),
-                        padding: EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: InkWell(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    ProductDetailScreen(product: product),
-                              ),
-                            );
-                          },
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 80,
-                                height: 80,
-                                child: Image.network(
-                                  product['image'],
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      color: Colors.grey[300],
-                                      child: Icon(Icons.error),
-                                    );
-                                  },
-                                ),
-                              ),
-                              SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      product['title'],
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    SizedBox(height: 4),
-                                    Text(
-                                      '\$${product['price']}',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        color: Colors.green,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.star,
-                                          color: Colors.orange,
-                                          size: 16,
-                                        ),
-                                        Text(
-                                          ' ${product['rating']['rate']} (${product['rating']['count']})',
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          fetchProducts();
-        },
-        child: Icon(Icons.refresh),
-      ),
+    return MaterialApp(title: 'Products List',
+        home: MultiBlocProvider(
+            providers: [
+              BlocProvider<ProductBlock>(
+                create: (context) => getIt<ProductBlock>(),
+              )
+            ],
+            child: ProductsScreen()
+        )
     );
   }
 }
@@ -305,18 +172,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 onPressed: () {
                   showDialog(
                     context: context,
-                    builder: (context) => AlertDialog(
-                      title: Text('Added to Cart'),
-                      content: Text(
-                        '${widget.product['title']} (Qty: $quantity) added to cart!',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: Text('OK'),
+                    builder: (context) =>
+                        AlertDialog(
+                          title: Text('Added to Cart'),
+                          content: Text(
+                            '${widget
+                                .product['title']} (Qty: $quantity) added to cart!',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: Text('OK'),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -324,7 +193,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   padding: EdgeInsets.symmetric(vertical: 16),
                 ),
                 child: Text(
-                  'Add to Cart - \$${(double.parse(widget.product['price'].toString()) * quantity).toStringAsFixed(2)}',
+                  'Add to Cart - \$${(double.parse(
+                      widget.product['price'].toString()) * quantity)
+                      .toStringAsFixed(2)}',
                   style: TextStyle(fontSize: 18, color: Colors.white),
                 ),
               ),
